@@ -3,16 +3,51 @@ library(tidyverse)
 library(RSocrata)
 library(lubridate)
 library(ggthemes)
+
 austin_scooters <- "https://data.austintexas.gov/resource/7d8e-dm7r.csv" %>% 
   RSocrata::read.socrata() %>% 
   as_tibble()
 
-## scooter utility
+## checking for weirdness ----
+# trips with start or end times from before 2018
+austin_scooters %>% 
+  filter(start_time < ymd(20180101) | end_time < ymd(20180101)) %>% 
+  select(start_time, end_time) # 341 trips
+
+# trips where the end is before the start
+austin_scooters %>% 
+  filter(end_time < start_time) # 375 trips
+
+# trips where the distance travelled is negative
+austin_scooters %>% 
+  filter(trip_distance < 0) %>% 
+  select(trip_distance) # 562 trips
+
+# trips where the distance is unreasonably high
+austin_scooters %>% 
+  filter(trip_distance > 16e4) %>% # 160k meters is approx 100 miles.
+  select(start_time, end_time,start_longitude, start_latitude,
+         end_longitude, end_latitude, trip_distance) # 478 trips
+
+# trips where the start or end is unreasonably far from the medians
+austin_scooters %>% 
+  filter(start_latitude - median(start_latitude, na.rm = TRUE) > .5 |
+         start_longitude - median(start_longitude, na.rm = TRUE) > .5 |
+         end_latitude - median(end_latitude, na.rm = TRUE) > .5 |
+         end_longitude - median(end_longitude, na.rm = TRUE) > .5) %>%  
+  select(start_time, end_time,start_longitude, start_latitude,
+         end_longitude, end_latitude, trip_distance) # 8.2k rides
+
+# trips where the any of t
+
+## scooter utility ----
 # what is the typical usage of a single scooter - battery
+
+
 # what is the typical lifetime of a scooter
 
 
-## time series questions
+## time series questions ----
 # what does hour really mean
 austin_scooters %>%
   select(hour, start_time, end_time) %>% 
@@ -21,11 +56,7 @@ austin_scooters %>%
 
 # how many rides were over an hour long
 austin_scooters %>% 
-  select(start_time, end_time) %>% 
-  mutate(duration = end_time - start_time,
-         duration = as.numeric(duration)) %>%
-  mutate(duration_minutes = as.numeric(duration/60)) %>%
-  filter(duration_minutes > 30) %>% 
+  filter(trip_duration > 3600) %>% # 3600 seconds = 1 hour
   count()
 
 # when was the epoch ride
@@ -51,16 +82,35 @@ austin_scooters %>%
   ggplot(aes(day_of_week, mean_rides)) +
   geom_histogram(stat = "identity")
 
-
-
-# rides/day increasing over time?
+# rides/day over time
 austin_scooters %>% 
-  filter(start_time > ymd(20181001)) %>% 
+  filter(start_time > ymd(20180801)) %>% 
   ggplot(aes(start_time)) +
-  geom_freqpoly(binwidth = 86400) + # 86400 seconds = 1 day 
-  ggtitle("The beginning of SXSW was peak scootpocalypse in Austin",
-          "Scooter rides per day, data.austin.gov")
- 
+  geom_histogram(binwidth = 86400) + # 86400 seconds = 1 day 
+  labs(title = "The beginning of SXSW was peak scoot-pocalypse in Austin",
+       subtitle = "Scooter rides per day, source: data.austin.gov",
+       x = "",
+       y = "") +
+  scale_x_datetime(date_breaks = "month", 
+                   date_labels = "%b") +
+  theme_minimal()
+ggsave("adhi/sxsw_scootpocalypse.png", height = 4, width = 7, units = c("in"))
+
+# minutes ridden per day 
+# might be a more compelling metric since sxsw riders might be doing a lot of really short rides
+
+austin_scooters %>% 
+  group_by(date = floor_date(start_time, "day")) %>%
+  summarise(total_ride_time = sum(trip_duration)) %>% 
+  mutate(total_ride_hours = total_ride_time/60/60) %>% 
+  filter(date > ymd(20180801)) %>% 
+  ggplot(aes(date, total_ride_hours)) + 
+  geom_histogram(stat = "identity", binwidth=1) +
+  labs(title = "Total scooter ride hours per day",
+       x = "",
+       y = "")
+  
+
 # is that huge spike due to SXSW?
 austin_scooters %>% 
   group_by(month = month(start_time, label = TRUE), day = day(start_time)) %>% 
@@ -77,3 +127,12 @@ austin_hexagon_grid <- RSocrata::read.socrata("https://data.austintexas.gov/reso
 # weather
 # 
 # traffic
+
+# cost of every ride
+austin_scooters %>%
+  filter(end_time > start_time) %>% 
+  filter(!end_time > Sys.time()) %>% 
+  mutate(trip_cost = 1 + 0.15 * (trip_duration / 60)) %>% 
+  arrange(desc(trip_cost)) %>% 
+  select(trip_cost, start_time, end_time, trip_distance)
+  
