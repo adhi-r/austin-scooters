@@ -38,4 +38,5 @@ hexagon_ride_counts <- austin_dockless %>%
   arrange(desc(n))
 
 hexagon_ride_counts %>%
-  left_join(austin_hexagon_grid, by = c("orig_cell_id" = "id"))
+  left_join(austin_hexagon_grid, by = c("orig_cell_id" = "id")) %>% 
+  write_csv("austin_hexagon_SO.csv")

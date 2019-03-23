@@ -141,3 +141,8 @@ austin_dockless %>%
   arrange(desc(trip_cost)) %>% 
   select(trip_cost, start_time, end_time, trip_distance)
   
+# scooters vs bikes
+# quantity
+austin_dockless %>% 
+  group_by(vehicle_type) %>% 
+  count()
